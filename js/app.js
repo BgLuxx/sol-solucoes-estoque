@@ -293,7 +293,7 @@
       }
       setFeedback(msg, "Entrada registrada com sucesso.", true);
       form.reset();
-      await Promise.all([carregarProdutos(), recarregarResumo()]);
+      await Promise.all([carregarProdutos(), recarregarResumo(), carregarPainelMovimentacoes("entrada")]);
     });
   }
 
@@ -325,7 +325,93 @@
       }
       setFeedback(msg, "Saída registrada com sucesso.", true);
       form.reset();
-      await Promise.all([carregarProdutos(), recarregarResumo()]);
+      await Promise.all([carregarProdutos(), recarregarResumo(), carregarPainelMovimentacoes("saida")]);
+    });
+  }
+
+  // ---------------- PAINÉIS LATERAIS (entrada / saída) ----------------
+  function formatarDataCurta(iso) {
+    const d = new Date(iso);
+    return {
+      hora: d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      dia: d.toLocaleDateString("pt-BR"),
+      mes: d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }),
+    };
+  }
+
+  async function carregarPainelMovimentacoes(tipo) {
+    const prefixo = tipo === "entrada" ? "entrada" : "saida";
+    const listaEl = document.getElementById(`${prefixo}-lista`);
+    const diaVal = document.getElementById(`${prefixo}-filtro-dia`).value;
+    const mesVal = document.getElementById(`${prefixo}-filtro-mes`).value;
+
+    let query = state.supabase
+      .from("movimentacoes")
+      .select("id, quantidade, valor_unitario, condominio, motivo, data, produtos(nome, sku)")
+      .eq("tipo", tipo)
+      .order("data", { ascending: false })
+      .limit(100);
+
+    if (diaVal) {
+      const [inicio, fim] = getDayRange(diaVal);
+      query = query.gte("data", inicio).lt("data", fim);
+    } else if (mesVal) {
+      const [inicio, fim] = getMonthRange(mesVal);
+      query = query.gte("data", inicio).lt("data", fim);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      listaEl.innerHTML = `<p class="muted small">Erro ao carregar: ${escapeHtml(error.message)}</p>`;
+      return;
+    }
+
+    if (!data || !data.length) {
+      listaEl.innerHTML = '<p class="muted small">Nenhuma movimentação encontrada nesse período.</p>';
+      return;
+    }
+
+    listaEl.innerHTML = data
+      .map((m) => {
+        const { hora, dia, mes } = formatarDataCurta(m.data);
+        const extra =
+          tipo === "saida"
+            ? `<div class="mini-item-extra">${escapeHtml(m.condominio || "—")}${
+                m.motivo ? " · " + escapeHtml(m.motivo) : ""
+              }</div>`
+            : "";
+        return `
+      <div class="mini-item">
+        <div class="mini-item-top">
+          <span>${escapeHtml(m.produtos?.nome || "—")} <span class="muted small">(${m.produtos?.sku || "—"})</span></span>
+          <span class="mini-item-qtd">${m.quantidade}x</span>
+        </div>
+        <div class="mini-item-meta">${dia} às ${hora} · ${mes}</div>
+        ${extra}
+      </div>`;
+      })
+      .join("");
+  }
+
+  function wirePainelFiltro(tipo) {
+    const prefixo = tipo === "entrada" ? "entrada" : "saida";
+    const diaInput = document.getElementById(`${prefixo}-filtro-dia`);
+    const mesInput = document.getElementById(`${prefixo}-filtro-mes`);
+    const limparBtn = document.getElementById(`${prefixo}-filtro-limpar`);
+
+    diaInput.addEventListener("change", () => {
+      if (diaInput.value) mesInput.value = "";
+      carregarPainelMovimentacoes(tipo);
+    });
+    mesInput.addEventListener("change", () => {
+      if (mesInput.value) diaInput.value = "";
+      carregarPainelMovimentacoes(tipo);
+    });
+    limparBtn.addEventListener("click", () => {
+      diaInput.value = "";
+      mesInput.value = "";
+      carregarPainelMovimentacoes(tipo);
     });
   }
 
@@ -408,6 +494,28 @@
     });
   }
 
+  // ---------------- RESUMO: filtro de período ----------------
+  function obterRangePeriodoResumo() {
+    const modo = document.getElementById("filtro-periodo-modo").value;
+    if (modo === "dia" || modo === "semana") {
+      const val = document.getElementById("filtro-periodo-dia").value;
+      if (!val) return null;
+      return modo === "dia" ? getDayRange(val) : getWeekRange(val);
+    }
+    if (modo === "mes") {
+      const val = document.getElementById("filtro-periodo-mes").value;
+      if (!val) return null;
+      return getMonthRange(val);
+    }
+    return null;
+  }
+
+  function atualizarVisibilidadePeriodo() {
+    const modo = document.getElementById("filtro-periodo-modo").value;
+    document.getElementById("filtro-periodo-dia").hidden = !(modo === "dia" || modo === "semana");
+    document.getElementById("filtro-periodo-mes").hidden = modo !== "mes";
+  }
+
   // ---------------- RESUMO: histórico ----------------
   async function carregarHistorico(reset) {
     if (reset) {
@@ -419,11 +527,19 @@
 
     const from = state.historicoOffset;
     const to = from + PAGE_SIZE - 1;
-    const { data, error } = await state.supabase
+    let query = state.supabase
       .from("movimentacoes")
       .select("id, tipo, quantidade, valor_unitario, condominio, motivo, data, produtos(nome, sku)")
       .order("data", { ascending: false })
       .range(from, to);
+
+    const tipoFiltro = document.getElementById("filtro-tipo").value;
+    if (tipoFiltro) query = query.eq("tipo", tipoFiltro);
+
+    const periodoRange = obterRangePeriodoResumo();
+    if (periodoRange) query = query.gte("data", periodoRange[0]).lt("data", periodoRange[1]);
+
+    const { data, error } = await query;
 
     if (error) {
       toast("Erro ao carregar histórico: " + error.message, true);
@@ -439,11 +555,9 @@
   }
 
   function renderHistorico() {
-    const tipoFiltro = document.getElementById("filtro-tipo").value;
     const busca = (document.getElementById("filtro-busca").value || "").toLowerCase();
 
     const linhas = state.historico.filter((m) => {
-      if (tipoFiltro && m.tipo !== tipoFiltro) return false;
       if (!busca) return true;
       const alvo = `${m.produtos?.nome || ""} ${m.produtos?.sku || ""} ${m.condominio || ""}`.toLowerCase();
       return alvo.includes(busca);
@@ -472,13 +586,46 @@
   }
 
   function wireFiltrosHistorico() {
-    document.getElementById("filtro-tipo").addEventListener("change", renderHistorico);
+    atualizarVisibilidadePeriodo();
+    document.getElementById("filtro-tipo").addEventListener("change", () => carregarHistorico(true));
+    document.getElementById("filtro-periodo-modo").addEventListener("change", () => {
+      atualizarVisibilidadePeriodo();
+      carregarHistorico(true);
+    });
+    document.getElementById("filtro-periodo-dia").addEventListener("change", () => carregarHistorico(true));
+    document.getElementById("filtro-periodo-mes").addEventListener("change", () => carregarHistorico(true));
     document.getElementById("filtro-busca").addEventListener("input", renderHistorico);
     document.getElementById("carregar-mais-btn").addEventListener("click", () => carregarHistorico(false));
   }
 
   async function recarregarResumo() {
     await Promise.all([carregarContadores(), carregarGraficoGastos(), carregarHistorico(true)]);
+  }
+
+  // ---------------- UTIL: intervalos de data ----------------
+  function getDayRange(dateStr) {
+    const start = new Date(dateStr + "T00:00:00");
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+    return [start.toISOString(), end.toISOString()];
+  }
+
+  function getWeekRange(dateStr) {
+    const d = new Date(dateStr + "T00:00:00");
+    const dia = d.getDay();
+    const diffSegunda = dia === 0 ? -6 : 1 - dia;
+    const segunda = new Date(d);
+    segunda.setDate(d.getDate() + diffSegunda);
+    const proximaSegunda = new Date(segunda);
+    proximaSegunda.setDate(segunda.getDate() + 7);
+    return [segunda.toISOString(), proximaSegunda.toISOString()];
+  }
+
+  function getMonthRange(monthStr) {
+    const [y, m] = monthStr.split("-").map(Number);
+    const start = new Date(y, m - 1, 1);
+    const end = new Date(y, m, 1);
+    return [start.toISOString(), end.toISOString()];
   }
 
   // ---------------- UTIL ----------------
@@ -503,8 +650,14 @@
     wireFormEntrada();
     wireFormSaida();
     wireFiltrosHistorico();
+    wirePainelFiltro("entrada");
+    wirePainelFiltro("saida");
     await carregarProdutos();
-    await recarregarResumo();
+    await Promise.all([
+      recarregarResumo(),
+      carregarPainelMovimentacoes("entrada"),
+      carregarPainelMovimentacoes("saida"),
+    ]);
   }
 
   document.addEventListener("DOMContentLoaded", () => {
