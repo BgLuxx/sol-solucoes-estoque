@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SOL SOLUÇÕES — Estoque</title>
+<link rel="icon" href="assets/logo.png" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<!-- TELA DE SENHA -->
+<div id="login-screen" class="login-screen">
+  <form id="login-form" class="login-box">
+    <img src="assets/logo.png" alt="Sol Soluções" class="login-logo" />
+    <h1>Controle de Estoque</h1>
+    <p class="muted">Digite a senha de acesso</p>
+    <input type="password" id="login-password" placeholder="Senha" autocomplete="current-password" required />
+    <button type="submit">Entrar</button>
+    <p id="login-error" class="error-text" hidden>Senha incorreta.</p>
+  </form>
+</div>
+
+<!-- APP -->
+<div id="app" hidden>
+  <header class="topbar">
+    <div class="topbar-left">
+      <img src="assets/logo.png" alt="Sol Soluções" class="topbar-logo" />
+    </div>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="resumo">Resumo</button>
+      <button class="tab-btn" data-tab="entrada">Entrada</button>
+      <button class="tab-btn" data-tab="saida">Saída</button>
+      <button class="tab-btn" data-tab="estoque">Estoque Geral</button>
+    </nav>
+    <button id="logout-btn" class="logout-btn" title="Sair">Sair</button>
+  </header>
+
+  <main>
+
+    <!-- RESUMO -->
+    <section id="tab-resumo" class="tab-panel active">
+      <div class="cards-grid">
+        <div class="card">
+          <span class="card-label">Produtos cadastrados</span>
+          <span class="card-value" id="stat-produtos">—</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Valor total em estoque</span>
+          <span class="card-value" id="stat-valor-estoque">—</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Entradas registradas</span>
+          <span class="card-value" id="stat-entradas">—</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Saídas registradas</span>
+          <span class="card-value" id="stat-saidas">—</span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Comparativo de gastos por mês</h2>
+          <span class="muted small">Valor total (custo) das saídas de estoque em cada mês</span>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="chart-gastos"></canvas>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Histórico de movimentações</h2>
+          <div class="filters">
+            <select id="filtro-tipo">
+              <option value="">Todas</option>
+              <option value="entrada">Entradas</option>
+              <option value="saida">Saídas</option>
+            </select>
+            <input type="text" id="filtro-busca" placeholder="Buscar produto ou condomínio..." />
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Produto</th>
+                <th>Qtd.</th>
+                <th>Valor</th>
+                <th>Condomínio</th>
+                <th>Observação</th>
+              </tr>
+            </thead>
+            <tbody id="historico-body">
+              <tr><td colspan="7" class="muted">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <button id="carregar-mais-btn" class="secondary-btn" hidden>Carregar mais</button>
+      </div>
+    </section>
+
+    <!-- ENTRADA -->
+    <section id="tab-entrada" class="tab-panel">
+      <div class="panel form-panel">
+        <div class="panel-header">
+          <h2>Dar entrada em estoque</h2>
+        </div>
+        <form id="form-entrada">
+          <label>Produto (SKU)
+            <select id="entrada-produto" required>
+              <option value="">Selecione um produto...</option>
+            </select>
+          </label>
+          <label>Quantidade
+            <input type="number" id="entrada-quantidade" min="1" step="1" required />
+          </label>
+          <button type="submit">Confirmar entrada</button>
+          <p id="entrada-msg" class="feedback-msg" hidden></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- SAÍDA -->
+    <section id="tab-saida" class="tab-panel">
+      <div class="panel form-panel">
+        <div class="panel-header">
+          <h2>Dar saída de estoque</h2>
+        </div>
+        <form id="form-saida">
+          <label>Produto (SKU)
+            <select id="saida-produto" required>
+              <option value="">Selecione um produto...</option>
+            </select>
+          </label>
+          <label>Quantidade
+            <input type="number" id="saida-quantidade" min="1" step="1" required />
+          </label>
+          <label>Condomínio
+            <select id="saida-condominio" required>
+              <option value="">Selecione o condomínio...</option>
+            </select>
+          </label>
+          <label>Observação <span class="muted small">(opcional)</span>
+            <textarea id="saida-motivo" rows="2" placeholder="Ex: conserto, reposição, etc."></textarea>
+          </label>
+          <button type="submit">Confirmar saída</button>
+          <p id="saida-msg" class="feedback-msg" hidden></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- ESTOQUE GERAL -->
+    <section id="tab-estoque" class="tab-panel">
+      <div class="panel form-panel">
+        <div class="panel-header">
+          <h2>Cadastrar novo produto</h2>
+        </div>
+        <form id="form-produto">
+          <label>Nome do produto
+            <input type="text" id="produto-nome" required />
+          </label>
+          <label>Valor unitário (R$)
+            <input type="number" id="produto-valor" min="0" step="0.01" required />
+          </label>
+          <label>Quantidade em estoque
+            <input type="number" id="produto-quantidade" min="0" step="1" value="0" required />
+          </label>
+          <button type="submit">Adicionar ao estoque</button>
+          <p id="produto-msg" class="feedback-msg" hidden></p>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2>Estoque geral</h2>
+          <input type="text" id="estoque-busca" placeholder="Buscar produto ou SKU..." />
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Produto</th>
+                <th>Valor unit.</th>
+                <th>Quantidade</th>
+                <th>Valor total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="produtos-body">
+              <tr><td colspan="6" class="muted">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- Editar produto -->
+<div id="edit-modal" class="modal" hidden>
+  <div class="modal-box">
+    <h2>Editar produto</h2>
+    <form id="edit-form">
+      <input type="hidden" id="edit-id" />
+      <label>Nome
+        <input type="text" id="edit-nome" required />
+      </label>
+      <label>Valor unitário (R$)
+        <input type="number" id="edit-valor" min="0" step="0.01" required />
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="edit-cancel" class="secondary-btn">Cancelar</button>
+        <button type="submit">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
