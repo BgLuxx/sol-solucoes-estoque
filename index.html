@@ -1,4 +1,4 @@
-or q<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8" />
@@ -78,6 +78,14 @@ or q<!DOCTYPE html>
               <option value="entrada">Entradas</option>
               <option value="saida">Saídas</option>
             </select>
+            <select id="filtro-periodo-modo">
+              <option value="">Qualquer período</option>
+              <option value="dia">Dia</option>
+              <option value="semana">Semana</option>
+              <option value="mes">Mês</option>
+            </select>
+            <input type="date" id="filtro-periodo-dia" class="periodo-input" hidden />
+            <input type="month" id="filtro-periodo-mes" class="periodo-input" hidden />
             <input type="text" id="filtro-busca" placeholder="Buscar produto ou condomínio..." />
           </div>
         </div>
@@ -105,51 +113,83 @@ or q<!DOCTYPE html>
 
     <!-- ENTRADA -->
     <section id="tab-entrada" class="tab-panel">
-      <div class="panel form-panel">
-        <div class="panel-header">
-          <h2>Dar entrada em estoque</h2>
+      <div class="split-layout">
+        <div class="panel form-panel">
+          <div class="panel-header">
+            <h2>Dar entrada em estoque</h2>
+          </div>
+          <form id="form-entrada">
+            <label>Produto (SKU)
+              <select id="entrada-produto" required>
+                <option value="">Selecione um produto...</option>
+              </select>
+            </label>
+            <label>Quantidade
+              <input type="number" id="entrada-quantidade" min="1" step="1" required />
+            </label>
+            <button type="submit">Confirmar entrada</button>
+            <p id="entrada-msg" class="feedback-msg" hidden></p>
+          </form>
         </div>
-        <form id="form-entrada">
-          <label>Produto (SKU)
-            <select id="entrada-produto" required>
-              <option value="">Selecione um produto...</option>
-            </select>
-          </label>
-          <label>Quantidade
-            <input type="number" id="entrada-quantidade" min="1" step="1" required />
-          </label>
-          <button type="submit">Confirmar entrada</button>
-          <p id="entrada-msg" class="feedback-msg" hidden></p>
-        </form>
+
+        <div class="panel side-panel">
+          <div class="panel-header">
+            <h2>Entradas registradas</h2>
+          </div>
+          <div class="filter-row">
+            <input type="date" id="entrada-filtro-dia" />
+            <input type="month" id="entrada-filtro-mes" />
+            <button type="button" id="entrada-filtro-limpar" class="secondary-btn">Limpar</button>
+          </div>
+          <div id="entrada-lista" class="mini-list">
+            <p class="muted small">Carregando...</p>
+          </div>
+        </div>
       </div>
     </section>
 
     <!-- SAÍDA -->
     <section id="tab-saida" class="tab-panel">
-      <div class="panel form-panel">
-        <div class="panel-header">
-          <h2>Dar saída de estoque</h2>
+      <div class="split-layout">
+        <div class="panel form-panel">
+          <div class="panel-header">
+            <h2>Dar saída de estoque</h2>
+          </div>
+          <form id="form-saida">
+            <label>Produto (SKU)
+              <select id="saida-produto" required>
+                <option value="">Selecione um produto...</option>
+              </select>
+            </label>
+            <label>Quantidade
+              <input type="number" id="saida-quantidade" min="1" step="1" required />
+            </label>
+            <label>Condomínio
+              <select id="saida-condominio" required>
+                <option value="">Selecione o condomínio...</option>
+              </select>
+            </label>
+            <label>Observação <span class="muted small">(opcional)</span>
+              <textarea id="saida-motivo" rows="2" placeholder="Ex: conserto, reposição, etc."></textarea>
+            </label>
+            <button type="submit">Confirmar saída</button>
+            <p id="saida-msg" class="feedback-msg" hidden></p>
+          </form>
         </div>
-        <form id="form-saida">
-          <label>Produto (SKU)
-            <select id="saida-produto" required>
-              <option value="">Selecione um produto...</option>
-            </select>
-          </label>
-          <label>Quantidade
-            <input type="number" id="saida-quantidade" min="1" step="1" required />
-          </label>
-          <label>Condomínio
-            <select id="saida-condominio" required>
-              <option value="">Selecione o condomínio...</option>
-            </select>
-          </label>
-          <label>Observação <span class="muted small">(opcional)</span>
-            <textarea id="saida-motivo" rows="2" placeholder="Ex: conserto, reposição, etc."></textarea>
-          </label>
-          <button type="submit">Confirmar saída</button>
-          <p id="saida-msg" class="feedback-msg" hidden></p>
-        </form>
+
+        <div class="panel side-panel">
+          <div class="panel-header">
+            <h2>Saídas registradas</h2>
+          </div>
+          <div class="filter-row">
+            <input type="date" id="saida-filtro-dia" />
+            <input type="month" id="saida-filtro-mes" />
+            <button type="button" id="saida-filtro-limpar" class="secondary-btn">Limpar</button>
+          </div>
+          <div id="saida-lista" class="mini-list">
+            <p class="muted small">Carregando...</p>
+          </div>
+        </div>
       </div>
     </section>
 
