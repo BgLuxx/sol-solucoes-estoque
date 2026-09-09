@@ -1,8 +1,8 @@
 // Preencha com os dados do SEU projeto Supabase (veja o README.md).
 // Supabase → seu projeto → Project Settings → API
 window.SUPABASE_CONFIG = {
-  url: "COLE_AQUI_A_PROJECT_URL",
-  anonKey: "COLE_AQUI_A_ANON_PUBLIC_KEY",
+  url: "https://heogjbtrmsetmkvqgjcs.supabase.co",
+  anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imhlb2dqYnRybXNldG1rdnFnamNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODUzNTI3MjAsImV4cCI6MjEwMDkyODcyMH0.aPI8UNj-wGiFXbfsdnzd-cUYwjSuuaiifbC5uuZ4pPc",
 };
 
 // Senha única de acesso ao site.
