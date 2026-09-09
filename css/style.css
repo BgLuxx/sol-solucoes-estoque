@@ -365,3 +365,6 @@ tr:last-child td { border-bottom: none; }
   header.topbar { flex-direction: column; align-items: stretch; }
   .tabs { justify-content: center; }
 }
+
+/* Garante que o atributo hidden realmente esconda o elemento (login-screen, modais etc.) */
+[hidden] { display: none !important; }
