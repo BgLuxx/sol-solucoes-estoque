@@ -184,6 +184,55 @@ main {
   position: relative;
 }
 
+/* ---------- SPLIT LAYOUT (formulário + painel lateral) ---------- */
+.split-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 440px) 1fr;
+  gap: 20px;
+  align-items: start;
+}
+@media (max-width: 860px) {
+  .split-layout { grid-template-columns: 1fr; }
+}
+.side-panel { min-width: 0; }
+.filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.filter-row input, .filter-row select { flex: 1 1 140px; }
+.mini-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 560px;
+  overflow-y: auto;
+}
+.mini-item {
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.mini-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-weight: 700;
+}
+.mini-item-qtd { color: var(--laranja); white-space: nowrap; }
+.mini-item-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.mini-item-extra {
+  font-size: 0.82rem;
+  color: var(--texto);
+  margin-top: 6px;
+}
+
 /* ---------- FORMS ---------- */
 .form-panel { max-width: 520px; }
 form { display: flex; flex-direction: column; gap: 14px; }
@@ -316,7 +365,3 @@ tr:last-child td { border-bottom: none; }
   header.topbar { flex-direction: column; align-items: stretch; }
   .tabs { justify-content: center; }
 }
-
-
-/* Garante que o atributo hidden realmente esconda o elemento (login-screen, modais etc.) */
-[hidden] { display: none !important; }
