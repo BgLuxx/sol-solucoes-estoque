@@ -96,6 +96,97 @@
     el.classList.add(ok ? "ok" : "error");
   }
 
+  // ---------------- FOTO DE PRODUTO ----------------
+  const FOTO_MAX_DIM = 800; // px, maior lado
+  const FOTO_MAX_BYTES_ORIGINAL = 8 * 1024 * 1024; // 8MB antes de comprimir
+
+  function lerArquivoComoImagem(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Não foi possível ler essa imagem."));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error("Não foi possível ler o arquivo."));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function comprimirFoto(file) {
+    if (!file.type || !file.type.startsWith("image/")) {
+      throw new Error("Selecione um arquivo de imagem.");
+    }
+    if (file.size > FOTO_MAX_BYTES_ORIGINAL) {
+      throw new Error("Imagem muito grande (máximo 8MB).");
+    }
+    const img = await lerArquivoComoImagem(file);
+    let { width, height } = img;
+    if (width > FOTO_MAX_DIM || height > FOTO_MAX_DIM) {
+      if (width >= height) {
+        height = Math.round((height * FOTO_MAX_DIM) / width);
+        width = FOTO_MAX_DIM;
+      } else {
+        width = Math.round((width * FOTO_MAX_DIM) / height);
+        height = FOTO_MAX_DIM;
+      }
+    }
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.75);
+  }
+
+  // Liga um <input type="file"> a uma pré-visualização com botão de remover.
+  // onChange recebe: string (data URL nova), ou null (removida explicitamente).
+  function wireFotoInput({ inputId, previewWrapId, previewImgId, removerBtnId, onChange }) {
+    const input = document.getElementById(inputId);
+    const wrap = document.getElementById(previewWrapId);
+    const img = document.getElementById(previewImgId);
+    const removerBtn = document.getElementById(removerBtnId);
+
+    input.addEventListener("change", async () => {
+      const file = input.files && input.files[0];
+      if (!file) return;
+      try {
+        const dataUrl = await comprimirFoto(file);
+        img.src = dataUrl;
+        wrap.hidden = false;
+        onChange(dataUrl);
+      } catch (err) {
+        toast(err.message, true);
+        input.value = "";
+      }
+    });
+
+    removerBtn.addEventListener("click", () => {
+      input.value = "";
+      img.src = "";
+      wrap.hidden = true;
+      onChange(null);
+    });
+  }
+
+  function abrirFotoModal(id) {
+    const p = state.produtos.find((x) => x.id === id);
+    if (!p || !p.foto) return;
+    const img = document.getElementById("foto-modal-img");
+    img.src = p.foto;
+    img.alt = p.nome;
+    document.getElementById("foto-modal").hidden = false;
+  }
+
+  function wireFotoModal() {
+    document.getElementById("foto-modal-fechar").addEventListener("click", () => {
+      document.getElementById("foto-modal").hidden = true;
+    });
+    document.getElementById("foto-modal").addEventListener("click", (e) => {
+      if (e.target.id === "foto-modal") document.getElementById("foto-modal").hidden = true;
+    });
+  }
+
   // ---------------- PRODUTOS ----------------
   async function carregarProdutos() {
     const { data, error } = await state.supabase
@@ -132,13 +223,18 @@
     );
     const body = document.getElementById("produtos-body");
     if (!linhas.length) {
-      body.innerHTML = '<tr><td colspan="6" class="muted">Nenhum produto encontrado.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="muted">Nenhum produto encontrado.</td></tr>';
       return;
     }
     body.innerHTML = linhas
       .map(
         (p) => `
       <tr>
+        <td>${
+          p.foto
+            ? `<img src="${p.foto}" class="produto-thumb" data-view="${p.id}" alt="Foto de ${escapeHtml(p.nome)}" />`
+            : '<span class="produto-thumb-vazia">Sem foto</span>'
+        }</td>
         <td>${p.sku}</td>
         <td>${escapeHtml(p.nome)}</td>
         <td>${fmtMoeda.format(p.valor_unitario)}</td>
@@ -157,6 +253,9 @@
     );
     body.querySelectorAll("[data-del]").forEach((btn) =>
       btn.addEventListener("click", () => excluirProduto(btn.dataset.del))
+    );
+    body.querySelectorAll("[data-view]").forEach((el) =>
+      el.addEventListener("click", () => abrirFotoModal(el.dataset.view))
     );
   }
 
@@ -190,9 +289,22 @@
     return { data: null, error: { message: "Não foi possível gerar um SKU único. Tente novamente." } };
   }
 
+  let novaFotoProduto = null;
+
   function wireFormProduto() {
     const form = document.getElementById("form-produto");
     const msg = document.getElementById("produto-msg");
+
+    wireFotoInput({
+      inputId: "produto-foto",
+      previewWrapId: "produto-foto-preview",
+      previewImgId: "produto-foto-preview-img",
+      removerBtnId: "produto-foto-remover",
+      onChange: (dataUrl) => {
+        novaFotoProduto = dataUrl;
+      },
+    });
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const nome = document.getElementById("produto-nome").value.trim();
@@ -202,7 +314,12 @@
 
       const submitBtn = form.querySelector("button[type=submit]");
       submitBtn.disabled = true;
-      const { data, error } = await inserirProdutoComSku({ nome, valor_unitario: valor, quantidade });
+      const { data, error } = await inserirProdutoComSku({
+        nome,
+        valor_unitario: valor,
+        quantidade,
+        foto: novaFotoProduto,
+      });
       submitBtn.disabled = false;
 
       if (error) {
@@ -212,6 +329,8 @@
       setFeedback(msg, `Produto "${data.nome}" cadastrado com SKU ${data.sku}.`, true);
       form.reset();
       document.getElementById("produto-quantidade").value = "0";
+      novaFotoProduto = null;
+      document.getElementById("produto-foto-preview").hidden = true;
       await carregarProdutos();
     });
 
@@ -219,16 +338,42 @@
   }
 
   // ---------------- EDITAR / EXCLUIR PRODUTO ----------------
+  // undefined = manter foto atual; null = remover; string = nova foto
+  let editFotoValor;
+
   function abrirEdicao(id) {
     const p = state.produtos.find((x) => x.id === id);
     if (!p) return;
     document.getElementById("edit-id").value = p.id;
     document.getElementById("edit-nome").value = p.nome;
     document.getElementById("edit-valor").value = p.valor_unitario;
+
+    editFotoValor = undefined;
+    document.getElementById("edit-foto").value = "";
+    const preview = document.getElementById("edit-foto-preview");
+    const previewImg = document.getElementById("edit-foto-preview-img");
+    if (p.foto) {
+      previewImg.src = p.foto;
+      preview.hidden = false;
+    } else {
+      previewImg.src = "";
+      preview.hidden = true;
+    }
+
     document.getElementById("edit-modal").hidden = false;
   }
 
   function wireModalEdicao() {
+    wireFotoInput({
+      inputId: "edit-foto",
+      previewWrapId: "edit-foto-preview",
+      previewImgId: "edit-foto-preview-img",
+      removerBtnId: "edit-foto-remover",
+      onChange: (dataUrl) => {
+        editFotoValor = dataUrl;
+      },
+    });
+
     document.getElementById("edit-cancel").addEventListener("click", () => {
       document.getElementById("edit-modal").hidden = true;
     });
@@ -237,10 +382,9 @@
       const id = document.getElementById("edit-id").value;
       const nome = document.getElementById("edit-nome").value.trim();
       const valor = parseFloat(document.getElementById("edit-valor").value);
-      const { error } = await state.supabase
-        .from("produtos")
-        .update({ nome, valor_unitario: valor })
-        .eq("id", id);
+      const patch = { nome, valor_unitario: valor };
+      if (editFotoValor !== undefined) patch.foto = editFotoValor;
+      const { error } = await state.supabase.from("produtos").update(patch).eq("id", id);
       if (error) {
         toast("Erro ao salvar: " + error.message, true);
         return;
@@ -647,6 +791,7 @@
     preencherCondominios();
     wireFormProduto();
     wireModalEdicao();
+    wireFotoModal();
     wireFormEntrada();
     wireFormSaida();
     wireFiltrosHistorico();
