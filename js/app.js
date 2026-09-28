@@ -563,6 +563,7 @@
     const sel = document.getElementById("saida-condominio");
     const options =
       '<option value="">Selecione o condomínio...</option>' +
+      '<option value="Outros">Outros (serviço fora dos condomínios)</option>' +
       (window.CONDOMINIOS || []).map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("");
     sel.innerHTML = options;
   }
