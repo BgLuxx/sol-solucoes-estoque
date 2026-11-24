@@ -27,6 +27,10 @@
     <div class="topbar-left">
       <img src="assets/logo.png" alt="Sol Soluções" class="topbar-logo" />
     </div>
+    <div class="deposito-switch">
+      <label for="deposito-select">Estoque:</label>
+      <select id="deposito-select"></select>
+    </div>
     <nav class="tabs">
       <button class="tab-btn active" data-tab="resumo">Resumo</button>
       <button class="tab-btn" data-tab="entrada">Entrada</button>
@@ -36,18 +40,27 @@
     <button id="logout-btn" class="logout-btn" title="Sair">Sair</button>
   </header>
 
+  <div id="alerta-estoque-baixo" class="alerta-estoque" hidden>
+    <div class="alerta-estoque-texto">
+      <strong>⚠️ Estoque baixo:</strong>
+      <span id="alerta-estoque-lista"></span>
+    </div>
+    <button type="button" id="alerta-estoque-ciente" class="secondary-btn">Estou ciente</button>
+  </div>
+
   <main>
 
     <!-- RESUMO -->
     <section id="tab-resumo" class="tab-panel active">
+      <p class="muted small">Mostrando dados do estoque: <strong id="resumo-deposito-label">—</strong></p>
       <div class="cards-grid">
         <div class="card">
           <span class="card-label">Produtos cadastrados</span>
           <span class="card-value" id="stat-produtos">—</span>
         </div>
-        <div class="card">
-          <span class="card-label">Valor total em estoque</span>
-          <span class="card-value" id="stat-valor-estoque">—</span>
+        <div class="card card-alerta" id="card-estoque-baixo">
+          <span class="card-label">Estoque baixo</span>
+          <span class="card-value" id="stat-estoque-baixo">—</span>
         </div>
         <div class="card">
           <span class="card-label">Entradas registradas</span>
@@ -56,16 +69,6 @@
         <div class="card">
           <span class="card-label">Saídas registradas</span>
           <span class="card-value" id="stat-saidas">—</span>
-        </div>
-      </div>
-
-      <div class="panel">
-        <div class="panel-header">
-          <h2>Comparativo de gastos por mês</h2>
-          <span class="muted small">Valor total (custo) das saídas de estoque em cada mês</span>
-        </div>
-        <div class="chart-wrap">
-          <canvas id="chart-gastos"></canvas>
         </div>
       </div>
 
@@ -97,13 +100,12 @@
                 <th>Tipo</th>
                 <th>Produto</th>
                 <th>Qtd.</th>
-                <th>Valor</th>
                 <th>Condomínio</th>
                 <th>Observação</th>
               </tr>
             </thead>
             <tbody id="historico-body">
-              <tr><td colspan="7" class="muted">Carregando...</td></tr>
+              <tr><td colspan="6" class="muted">Carregando...</td></tr>
             </tbody>
           </table>
         </div>
@@ -117,6 +119,7 @@
         <div class="panel form-panel">
           <div class="panel-header">
             <h2>Dar entrada em estoque</h2>
+            <span class="muted small">Escolha o produto e quantas unidades chegaram.</span>
           </div>
           <form id="form-entrada">
             <label>Produto (SKU)
@@ -154,6 +157,7 @@
         <div class="panel form-panel">
           <div class="panel-header">
             <h2>Dar saída de estoque</h2>
+            <span class="muted small">Escolha o produto, a quantidade e pra onde foi.</span>
           </div>
           <form id="form-saida">
             <label>Produto (SKU)
@@ -203,9 +207,6 @@
           <label>Nome do produto
             <input type="text" id="produto-nome" required />
           </label>
-          <label>Valor unitário (R$)
-            <input type="number" id="produto-valor" min="0" step="0.01" required />
-          </label>
           <label>Quantidade em estoque
             <input type="number" id="produto-quantidade" min="0" step="1" value="0" required />
           </label>
@@ -233,14 +234,12 @@
                 <th>Foto</th>
                 <th>SKU</th>
                 <th>Produto</th>
-                <th>Valor unit.</th>
                 <th>Quantidade</th>
-                <th>Valor total</th>
                 <th></th>
               </tr>
             </thead>
             <tbody id="produtos-body">
-              <tr><td colspan="7" class="muted">Carregando...</td></tr>
+              <tr><td colspan="5" class="muted">Carregando...</td></tr>
             </tbody>
           </table>
         </div>
@@ -260,9 +259,6 @@
       <input type="hidden" id="edit-id" />
       <label>Nome
         <input type="text" id="edit-nome" required />
-      </label>
-      <label>Valor unitário (R$)
-        <input type="number" id="edit-valor" min="0" step="0.01" required />
       </label>
       <label>Foto <span class="muted small">(opcional)</span>
         <input type="file" id="edit-foto" accept="image/*" />
@@ -290,7 +286,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="js/config.js"></script>
 <script src="js/app.js"></script>
 </body>

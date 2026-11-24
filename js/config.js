@@ -8,6 +8,12 @@ window.SUPABASE_CONFIG = {
 // Senha única de acesso ao site.
 window.APP_PASSWORD = "SolSolucoes";
 
+// Depósitos/estoques separados dentro do site (cada um tem seus próprios
+// produtos, entradas e saídas, totalmente independentes um do outro).
+// O primeiro da lista é o que abre por padrão. Pra adicionar um novo
+// depósito no futuro, é só acrescentar o nome aqui nessa lista.
+window.DEPOSITOS = ["SOL 1", "SOL 2"];
+
 // Condomínios administrados pela Sol Soluções (usados na tela de Saída).
 window.CONDOMINIOS = [
   "Portal dos Nobres",

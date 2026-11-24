@@ -29,6 +29,17 @@ create table if not exists movimentacoes (
 create index if not exists idx_movimentacoes_data on movimentacoes (data desc);
 create index if not exists idx_movimentacoes_produto on movimentacoes (produto_id);
 
+-- Foto do produto (se o seu banco ainda não tiver essa coluna).
+alter table produtos add column if not exists foto text;
+
+-- Depósito/armazém ao qual o produto pertence. Cada depósito é um estoque
+-- totalmente separado (produtos, entradas e saídas independentes).
+-- Ao rodar isso pela primeira vez, TODOS os produtos que já existiam ficam
+-- automaticamente no depósito "SOL 1" (valor padrão da coluna). "SOL 2"
+-- começa vazio — só aparece como opção pra cadastrar produtos novos nele.
+alter table produtos add column if not exists deposito text not null default 'SOL 1';
+create index if not exists idx_produtos_deposito on produtos (deposito);
+
 -- Segurança: como o site usa uma senha única de acesso (definida no próprio
 -- site) em vez de login individual do Supabase, liberamos a chave "anon"
 -- para ler/escrever nessas duas tabelas. Isso é suficiente para o uso

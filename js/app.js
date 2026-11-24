@@ -2,6 +2,7 @@
   "use strict";
 
   const PAGE_SIZE = 50;
+  const ESTOQUE_BAIXO_LIMITE = 3;
 
   const state = {
     supabase: null,
@@ -9,15 +10,13 @@
     historico: [],
     historicoOffset: 0,
     historicoTemMais: true,
-    chart: null,
+    depositoAtual: null,
   };
 
-  const fmtMoeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
   const fmtDataHora = (iso) => {
     const d = new Date(iso);
     return d.toLocaleDateString("pt-BR") + " " + d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   };
-  const fmtMesAno = (date) => date.toLocaleDateString("pt-BR", { month: "short", year: "numeric" });
 
   // ---------------- SUPABASE ----------------
   function initSupabase() {
@@ -187,11 +186,68 @@
     });
   }
 
+  // ---------------- DEPÓSITOS (estoques separados) ----------------
+  function chaveAckEstoqueBaixo() {
+    return `sol_estoque_baixo_ack_${state.depositoAtual}`;
+  }
+
+  function lerAckEstoqueBaixo() {
+    try {
+      return JSON.parse(localStorage.getItem(chaveAckEstoqueBaixo()) || "{}");
+    } catch {
+      return {};
+    }
+  }
+
+  function salvarAckEstoqueBaixo(mapa) {
+    localStorage.setItem(chaveAckEstoqueBaixo(), JSON.stringify(mapa));
+  }
+
+  function preencherSeletorDeposito() {
+    const sel = document.getElementById("deposito-select");
+    const lista = window.DEPOSITOS && window.DEPOSITOS.length ? window.DEPOSITOS : ["SOL 1"];
+    sel.innerHTML = lista.map((d) => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`).join("");
+    const salvo = localStorage.getItem("sol_estoque_deposito_atual");
+    state.depositoAtual = lista.includes(salvo) ? salvo : lista[0];
+    sel.value = state.depositoAtual;
+  }
+
+  function wireSeletorDeposito() {
+    document.getElementById("deposito-select").addEventListener("change", async (e) => {
+      state.depositoAtual = e.target.value;
+      localStorage.setItem("sol_estoque_deposito_atual", state.depositoAtual);
+      document.getElementById("alerta-estoque-baixo").hidden = true;
+      await recarregarTudo();
+    });
+  }
+
+  function wireAlertaEstoqueBaixo() {
+    document.getElementById("alerta-estoque-ciente").addEventListener("click", () => {
+      const barra = document.getElementById("alerta-estoque-baixo");
+      const itens = JSON.parse(barra.dataset.skus || "[]");
+      const ack = lerAckEstoqueBaixo();
+      itens.forEach((it) => (ack[it.sku] = it.quantidade));
+      salvarAckEstoqueBaixo(ack);
+      barra.hidden = true;
+    });
+  }
+
+  async function recarregarTudo() {
+    document.getElementById("resumo-deposito-label").textContent = state.depositoAtual;
+    await carregarProdutos();
+    await Promise.all([
+      recarregarResumo(),
+      carregarPainelMovimentacoes("entrada"),
+      carregarPainelMovimentacoes("saida"),
+    ]);
+  }
+
   // ---------------- PRODUTOS ----------------
   async function carregarProdutos() {
     const { data, error } = await state.supabase
       .from("produtos")
       .select("*")
+      .eq("deposito", state.depositoAtual)
       .order("nome", { ascending: true });
     if (error) {
       toast("Erro ao carregar produtos: " + error.message, true);
@@ -223,7 +279,7 @@
     );
     const body = document.getElementById("produtos-body");
     if (!linhas.length) {
-      body.innerHTML = '<tr><td colspan="7" class="muted">Nenhum produto encontrado.</td></tr>';
+      body.innerHTML = '<tr><td colspan="5" class="muted">Nenhum produto encontrado.</td></tr>';
       return;
     }
     body.innerHTML = linhas
@@ -237,9 +293,7 @@
         }</td>
         <td>${p.sku}</td>
         <td>${escapeHtml(p.nome)}</td>
-        <td>${fmtMoeda.format(p.valor_unitario)}</td>
         <td>${p.quantidade}</td>
-        <td>${fmtMoeda.format(p.valor_unitario * p.quantidade)}</td>
         <td>
           <button class="link-btn" data-edit="${p.id}">Editar</button>
           <button class="link-btn danger" data-del="${p.id}">Excluir</button>
@@ -261,8 +315,26 @@
 
   function renderStatsProdutos() {
     document.getElementById("stat-produtos").textContent = state.produtos.length;
-    const valorTotal = state.produtos.reduce((acc, p) => acc + p.valor_unitario * p.quantidade, 0);
-    document.getElementById("stat-valor-estoque").textContent = fmtMoeda.format(valorTotal);
+    renderEstoqueBaixo();
+  }
+
+  function renderEstoqueBaixo() {
+    const baixos = state.produtos.filter((p) => p.quantidade <= ESTOQUE_BAIXO_LIMITE);
+    document.getElementById("stat-estoque-baixo").textContent = baixos.length;
+
+    const ack = lerAckEstoqueBaixo();
+    const pendentes = baixos.filter((p) => ack[p.sku] !== p.quantidade);
+
+    const barra = document.getElementById("alerta-estoque-baixo");
+    if (!pendentes.length) {
+      barra.hidden = true;
+      return;
+    }
+    barra.hidden = false;
+    document.getElementById("alerta-estoque-lista").textContent = pendentes
+      .map((p) => `${p.nome} (${p.quantidade} un.)`)
+      .join(", ");
+    barra.dataset.skus = JSON.stringify(pendentes.map((p) => ({ sku: p.sku, quantidade: p.quantidade })));
   }
 
   function skuBase(nome) {
@@ -308,17 +380,16 @@
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const nome = document.getElementById("produto-nome").value.trim();
-      const valor = parseFloat(document.getElementById("produto-valor").value);
       const quantidade = parseInt(document.getElementById("produto-quantidade").value, 10);
-      if (!nome || isNaN(valor) || isNaN(quantidade)) return;
+      if (!nome || isNaN(quantidade)) return;
 
       const submitBtn = form.querySelector("button[type=submit]");
       submitBtn.disabled = true;
       const { data, error } = await inserirProdutoComSku({
         nome,
-        valor_unitario: valor,
         quantidade,
         foto: novaFotoProduto,
+        deposito: state.depositoAtual,
       });
       submitBtn.disabled = false;
 
@@ -346,7 +417,6 @@
     if (!p) return;
     document.getElementById("edit-id").value = p.id;
     document.getElementById("edit-nome").value = p.nome;
-    document.getElementById("edit-valor").value = p.valor_unitario;
 
     editFotoValor = undefined;
     document.getElementById("edit-foto").value = "";
@@ -381,8 +451,7 @@
       e.preventDefault();
       const id = document.getElementById("edit-id").value;
       const nome = document.getElementById("edit-nome").value.trim();
-      const valor = parseFloat(document.getElementById("edit-valor").value);
-      const patch = { nome, valor_unitario: valor };
+      const patch = { nome };
       if (editFotoValor !== undefined) patch.foto = editFotoValor;
       const { error } = await state.supabase.from("produtos").update(patch).eq("id", id);
       if (error) {
@@ -491,8 +560,9 @@
 
     let query = state.supabase
       .from("movimentacoes")
-      .select("id, quantidade, valor_unitario, condominio, motivo, data, produtos(nome, sku)")
+      .select("id, quantidade, condominio, motivo, data, produtos!inner(nome, sku, deposito)")
       .eq("tipo", tipo)
+      .eq("produtos.deposito", state.depositoAtual)
       .order("data", { ascending: false })
       .limit(100);
 
@@ -571,72 +641,19 @@
   // ---------------- RESUMO: contadores ----------------
   async function carregarContadores() {
     const [{ count: totalEntradas }, { count: totalSaidas }] = await Promise.all([
-      state.supabase.from("movimentacoes").select("id", { count: "exact", head: true }).eq("tipo", "entrada"),
-      state.supabase.from("movimentacoes").select("id", { count: "exact", head: true }).eq("tipo", "saida"),
+      state.supabase
+        .from("movimentacoes")
+        .select("id, produtos!inner(deposito)", { count: "exact", head: true })
+        .eq("tipo", "entrada")
+        .eq("produtos.deposito", state.depositoAtual),
+      state.supabase
+        .from("movimentacoes")
+        .select("id, produtos!inner(deposito)", { count: "exact", head: true })
+        .eq("tipo", "saida")
+        .eq("produtos.deposito", state.depositoAtual),
     ]);
     document.getElementById("stat-entradas").textContent = totalEntradas ?? "—";
     document.getElementById("stat-saidas").textContent = totalSaidas ?? "—";
-  }
-
-  // ---------------- RESUMO: gráfico de gastos por mês ----------------
-  async function carregarGraficoGastos() {
-    const desde = new Date();
-    desde.setMonth(desde.getMonth() - 11);
-    desde.setDate(1);
-    desde.setHours(0, 0, 0, 0);
-
-    const { data, error } = await state.supabase
-      .from("movimentacoes")
-      .select("quantidade, valor_unitario, data")
-      .eq("tipo", "saida")
-      .gte("data", desde.toISOString());
-
-    if (error) {
-      console.error(error);
-      return;
-    }
-
-    const meses = [];
-    const cursor = new Date(desde);
-    for (let i = 0; i < 12; i++) {
-      meses.push({ key: `${cursor.getFullYear()}-${cursor.getMonth()}`, label: fmtMesAno(cursor), total: 0 });
-      cursor.setMonth(cursor.getMonth() + 1);
-    }
-
-    (data || []).forEach((mov) => {
-      const d = new Date(mov.data);
-      const key = `${d.getFullYear()}-${d.getMonth()}`;
-      const bucket = meses.find((m) => m.key === key);
-      if (bucket) bucket.total += mov.quantidade * mov.valor_unitario;
-    });
-
-    const ctx = document.getElementById("chart-gastos").getContext("2d");
-    if (state.chart) state.chart.destroy();
-    state.chart = new Chart(ctx, {
-      type: "bar",
-      data: {
-        labels: meses.map((m) => m.label),
-        datasets: [
-          {
-            label: "Gasto com saídas (R$)",
-            data: meses.map((m) => m.total.toFixed(2)),
-            backgroundColor: "#f2701f",
-            borderRadius: 4,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { callback: (v) => fmtMoeda.format(v) },
-          },
-        },
-      },
-    });
   }
 
   // ---------------- RESUMO: filtro de período ----------------
@@ -674,7 +691,8 @@
     const to = from + PAGE_SIZE - 1;
     let query = state.supabase
       .from("movimentacoes")
-      .select("id, tipo, quantidade, valor_unitario, condominio, motivo, data, produtos(nome, sku)")
+      .select("id, tipo, quantidade, condominio, motivo, data, produtos!inner(nome, sku, deposito)")
+      .eq("produtos.deposito", state.depositoAtual)
       .order("data", { ascending: false })
       .range(from, to);
 
@@ -710,7 +728,7 @@
 
     const body = document.getElementById("historico-body");
     if (!linhas.length) {
-      body.innerHTML = '<tr><td colspan="7" class="muted">Nenhuma movimentação encontrada.</td></tr>';
+      body.innerHTML = '<tr><td colspan="6" class="muted">Nenhuma movimentação encontrada.</td></tr>';
       return;
     }
 
@@ -722,7 +740,6 @@
         <td><span class="badge ${m.tipo}">${m.tipo === "entrada" ? "Entrada" : "Saída"}</span></td>
         <td>${escapeHtml(m.produtos?.nome || "—")} <span class="muted small">(${m.produtos?.sku || "—"})</span></td>
         <td>${m.quantidade}</td>
-        <td>${fmtMoeda.format(m.quantidade * m.valor_unitario)}</td>
         <td>${escapeHtml(m.condominio || "—")}</td>
         <td>${escapeHtml(m.motivo || "—")}</td>
       </tr>`
@@ -744,7 +761,7 @@
   }
 
   async function recarregarResumo() {
-    await Promise.all([carregarContadores(), carregarGraficoGastos(), carregarHistorico(true)]);
+    await Promise.all([carregarContadores(), carregarHistorico(true)]);
   }
 
   // ---------------- UTIL: intervalos de data ----------------
@@ -789,6 +806,9 @@
   async function bootstrapApp() {
     if (bootstrapped) return;
     bootstrapped = true;
+    preencherSeletorDeposito();
+    wireSeletorDeposito();
+    wireAlertaEstoqueBaixo();
     preencherCondominios();
     wireFormProduto();
     wireModalEdicao();
@@ -798,12 +818,7 @@
     wireFiltrosHistorico();
     wirePainelFiltro("entrada");
     wirePainelFiltro("saida");
-    await carregarProdutos();
-    await Promise.all([
-      recarregarResumo(),
-      carregarPainelMovimentacoes("entrada"),
-      carregarPainelMovimentacoes("saida"),
-    ]);
+    await recarregarTudo();
   }
 
   document.addEventListener("DOMContentLoaded", () => {
