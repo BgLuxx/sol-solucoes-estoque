@@ -152,12 +152,22 @@ header.topbar {
   flex-wrap: wrap;
 }
 .alerta-estoque-texto { font-size: 0.9rem; }
-.alerta-estoque .secondary-btn {
-  background: var(--vermelho);
-  color: var(--branco);
+.alerta-estoque-acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+.alerta-estoque-acoes .secondary-btn {
+  background: var(--branco);
+  color: var(--vermelho);
+  border: 1px solid var(--vermelho);
   white-space: nowrap;
 }
+#alerta-estoque-ciente {
+  background: var(--vermelho);
+  color: var(--branco);
+  border: 1px solid var(--vermelho);
+}
+.card-alerta { cursor: pointer; }
+.card-alerta:hover { filter: brightness(0.97); }
 .card-alerta .card-value { color: var(--vermelho); }
+.qtd-baixa { color: var(--vermelho); font-weight: 700; }
 
 main {
   max-width: 1100px;

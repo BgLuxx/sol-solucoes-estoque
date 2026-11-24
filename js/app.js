@@ -221,14 +221,57 @@
     });
   }
 
+  function confirmarCienteEstoqueBaixo() {
+    const barra = document.getElementById("alerta-estoque-baixo");
+    const itens = JSON.parse(barra.dataset.skus || "[]");
+    const ack = lerAckEstoqueBaixo();
+    itens.forEach((it) => (ack[it.sku] = it.quantidade));
+    salvarAckEstoqueBaixo(ack);
+    barra.hidden = true;
+  }
+
+  function renderListaModalEstoqueBaixo(itens) {
+    const lista = document.getElementById("estoque-baixo-modal-lista");
+    if (!itens.length) {
+      lista.innerHTML = '<p class="muted small">Nenhum produto com estoque baixo no momento.</p>';
+      return;
+    }
+    lista.innerHTML = itens
+      .map(
+        (p) => `
+      <div class="mini-item">
+        <div class="mini-item-top">
+          <span>${escapeHtml(p.nome)}</span>
+          <span class="mini-item-qtd">${p.quantidade} un.</span>
+        </div>
+      </div>`
+      )
+      .join("");
+  }
+
+  function abrirModalEstoqueBaixoPendentes() {
+    const barra = document.getElementById("alerta-estoque-baixo");
+    const itens = JSON.parse(barra.dataset.skus || "[]");
+    renderListaModalEstoqueBaixo(itens);
+    document.getElementById("estoque-baixo-modal").hidden = false;
+  }
+
+  function abrirModalEstoqueBaixoCompleto() {
+    const baixos = state.produtos.filter((p) => p.quantidade <= ESTOQUE_BAIXO_LIMITE);
+    renderListaModalEstoqueBaixo(baixos);
+    document.getElementById("estoque-baixo-modal").hidden = false;
+  }
+
   function wireAlertaEstoqueBaixo() {
-    document.getElementById("alerta-estoque-ciente").addEventListener("click", () => {
-      const barra = document.getElementById("alerta-estoque-baixo");
-      const itens = JSON.parse(barra.dataset.skus || "[]");
-      const ack = lerAckEstoqueBaixo();
-      itens.forEach((it) => (ack[it.sku] = it.quantidade));
-      salvarAckEstoqueBaixo(ack);
-      barra.hidden = true;
+    document.getElementById("alerta-estoque-ver").addEventListener("click", abrirModalEstoqueBaixoPendentes);
+    document.getElementById("alerta-estoque-ciente").addEventListener("click", confirmarCienteEstoqueBaixo);
+    document.getElementById("card-estoque-baixo").addEventListener("click", abrirModalEstoqueBaixoCompleto);
+    document.getElementById("estoque-baixo-modal-fechar").addEventListener("click", () => {
+      document.getElementById("estoque-baixo-modal").hidden = true;
+    });
+    document.getElementById("estoque-baixo-modal-ciente").addEventListener("click", () => {
+      confirmarCienteEstoqueBaixo();
+      document.getElementById("estoque-baixo-modal").hidden = true;
     });
   }
 
@@ -293,7 +336,11 @@
         }</td>
         <td>${p.sku}</td>
         <td>${escapeHtml(p.nome)}</td>
-        <td>${p.quantidade}</td>
+        <td>${
+          p.quantidade <= ESTOQUE_BAIXO_LIMITE
+            ? `<span class="qtd-baixa">${p.quantidade}</span>`
+            : p.quantidade
+        }</td>
         <td>
           <button class="link-btn" data-edit="${p.id}">Editar</button>
           <button class="link-btn danger" data-del="${p.id}">Excluir</button>
@@ -326,15 +373,15 @@
     const pendentes = baixos.filter((p) => ack[p.sku] !== p.quantidade);
 
     const barra = document.getElementById("alerta-estoque-baixo");
+    barra.dataset.skus = JSON.stringify(
+      pendentes.map((p) => ({ sku: p.sku, quantidade: p.quantidade, nome: p.nome }))
+    );
     if (!pendentes.length) {
       barra.hidden = true;
       return;
     }
     barra.hidden = false;
-    document.getElementById("alerta-estoque-lista").textContent = pendentes
-      .map((p) => `${p.nome} (${p.quantidade} un.)`)
-      .join(", ");
-    barra.dataset.skus = JSON.stringify(pendentes.map((p) => ({ sku: p.sku, quantidade: p.quantidade })));
+    document.getElementById("alerta-estoque-contador").textContent = pendentes.length;
   }
 
   function skuBase(nome) {
