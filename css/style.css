@@ -278,6 +278,16 @@ main {
   color: var(--texto);
   margin-top: 6px;
 }
+.mini-item-emprestimo {
+  border-color: var(--laranja);
+  background: #fff6ee;
+}
+
+.badge.emprestimo {
+  background: #fff1e2;
+  color: var(--laranja);
+  margin-left: 6px;
+}
 
 /* ---------- FORMS ---------- */
 .form-panel { max-width: 520px; }

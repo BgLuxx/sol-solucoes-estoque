@@ -325,6 +325,8 @@
       body.innerHTML = '<tr><td colspan="5" class="muted">Nenhum produto encontrado.</td></tr>';
       return;
     }
+    const temOutroDeposito =
+      (window.DEPOSITOS || []).filter((d) => d !== state.depositoAtual).length > 0;
     body.innerHTML = linhas
       .map(
         (p) => `
@@ -343,6 +345,11 @@
         }</td>
         <td>
           <button class="link-btn" data-edit="${p.id}">Editar</button>
+          ${
+            temOutroDeposito
+              ? `<button class="link-btn" data-emprestar="${p.id}">Emprestar</button>`
+              : ""
+          }
           <button class="link-btn danger" data-del="${p.id}">Excluir</button>
         </td>
       </tr>`
@@ -358,6 +365,112 @@
     body.querySelectorAll("[data-view]").forEach((el) =>
       el.addEventListener("click", () => abrirFotoModal(el.dataset.view))
     );
+    body.querySelectorAll("[data-emprestar]").forEach((btn) =>
+      btn.addEventListener("click", () => abrirEmprestimo(btn.dataset.emprestar))
+    );
+  }
+
+  // ---------------- EMPRÉSTIMO ENTRE DEPÓSITOS ----------------
+  function abrirEmprestimo(id) {
+    const p = state.produtos.find((x) => x.id === id);
+    if (!p) return;
+    document.getElementById("emprestar-produto-id").value = p.id;
+    document.getElementById("emprestar-produto-nome").textContent = p.nome;
+    const outros = (window.DEPOSITOS || []).filter((d) => d !== state.depositoAtual);
+    document.getElementById("emprestar-deposito-destino").innerHTML = outros
+      .map((d) => `<option value="${escapeHtml(d)}">${escapeHtml(d)}</option>`)
+      .join("");
+    document.getElementById("emprestar-quantidade").value = "";
+    document.getElementById("emprestar-modal").hidden = false;
+  }
+
+  function wireModalEmprestimo() {
+    document.getElementById("emprestar-cancel").addEventListener("click", () => {
+      document.getElementById("emprestar-modal").hidden = true;
+    });
+    document.getElementById("emprestar-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const produtoId = document.getElementById("emprestar-produto-id").value;
+      const destino = document.getElementById("emprestar-deposito-destino").value;
+      const quantidade = parseInt(document.getElementById("emprestar-quantidade").value, 10);
+      if (!produtoId || !destino || !quantidade) return;
+
+      const submitBtn = e.target.querySelector("button[type=submit]");
+      submitBtn.disabled = true;
+      const { error } = await state.supabase.rpc("emprestar_produto", {
+        p_produto_id: produtoId,
+        p_deposito_destino: destino,
+        p_quantidade: quantidade,
+      });
+      submitBtn.disabled = false;
+
+      if (error) {
+        toast("Erro ao emprestar: " + error.message, true);
+        return;
+      }
+      document.getElementById("emprestar-modal").hidden = true;
+      toast(`Empréstimo registrado: ${quantidade} un. enviada(s) pra ${destino}.`);
+      await recarregarTudo();
+    });
+  }
+
+  // ---------------- IMPRIMIR / BAIXAR LISTA DE ESTOQUE ----------------
+  function imprimirListaProdutos() {
+    const linhas = [...state.produtos].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+    const dataStr = new Date().toLocaleDateString("pt-BR");
+    const win = window.open("", "_blank");
+    if (!win) {
+      toast("Não foi possível abrir a janela de impressão. Verifique o bloqueador de pop-ups.", true);
+      return;
+    }
+    const linhasHtml = linhas
+      .map(
+        (p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td>${escapeHtml(p.sku)}</td>
+        <td>${escapeHtml(p.nome)}</td>
+        <td class="qtd">${p.quantidade}</td>
+        <td class="vazio"></td>
+        <td class="vazio"></td>
+      </tr>`
+      )
+      .join("");
+    win.document.write(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<title>Estoque ${escapeHtml(state.depositoAtual)} — ${dataStr}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #1c2733; }
+  h1 { font-size: 1.3rem; margin: 0 0 2px; }
+  p.sub { color: #6b7a89; margin: 0 0 18px; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
+  th { background: #eee; }
+  td.qtd { text-align: center; font-weight: 700; }
+  td.vazio { min-width: 90px; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body>
+  <h1>Estoque — ${escapeHtml(state.depositoAtual)}</h1>
+  <p class="sub">Impresso em ${dataStr} · ${linhas.length} produto(s)</p>
+  <table>
+    <thead>
+      <tr><th>#</th><th>SKU</th><th>Produto</th><th>Qtd. no sistema</th><th>Contagem física</th><th>Diferença</th></tr>
+    </thead>
+    <tbody>${linhasHtml}</tbody>
+  </table>
+</body>
+</html>`);
+    win.document.close();
+    win.focus();
+    win.print();
+  }
+
+  function wireImprimirLista() {
+    document.getElementById("estoque-imprimir-btn").addEventListener("click", imprimirListaProdutos);
   }
 
   function renderStatsProdutos() {
@@ -636,16 +749,17 @@
     listaEl.innerHTML = data
       .map((m) => {
         const { hora, dia, mes } = formatarDataCurta(m.data);
-        const extra =
-          tipo === "saida"
-            ? `<div class="mini-item-extra">${escapeHtml(m.condominio || "—")}${
-                m.motivo ? " · " + escapeHtml(m.motivo) : ""
-              }</div>`
-            : "";
+        const ehEmprestimo = (m.motivo || "").startsWith("Empréstimo");
+        const partesExtra = [];
+        if (tipo === "saida" && m.condominio) partesExtra.push(escapeHtml(m.condominio));
+        if (m.motivo) partesExtra.push(escapeHtml(m.motivo));
+        const extra = partesExtra.length
+          ? `<div class="mini-item-extra">${partesExtra.join(" · ")}</div>`
+          : "";
         return `
-      <div class="mini-item">
+      <div class="mini-item${ehEmprestimo ? " mini-item-emprestimo" : ""}">
         <div class="mini-item-top">
-          <span>${escapeHtml(m.produtos?.nome || "—")} <span class="muted small">(${m.produtos?.sku || "—"})</span></span>
+          <span>${ehEmprestimo ? "🔁 " : ""}${escapeHtml(m.produtos?.nome || "—")} <span class="muted small">(${m.produtos?.sku || "—"})</span></span>
           <span class="mini-item-qtd">${m.quantidade}x</span>
         </div>
         <div class="mini-item-meta">${dia} às ${hora} · ${mes}</div>
@@ -769,7 +883,7 @@
 
     const linhas = state.historico.filter((m) => {
       if (!busca) return true;
-      const alvo = `${m.produtos?.nome || ""} ${m.produtos?.sku || ""} ${m.condominio || ""}`.toLowerCase();
+      const alvo = `${m.produtos?.nome || ""} ${m.produtos?.sku || ""} ${m.condominio || ""} ${m.motivo || ""}`.toLowerCase();
       return alvo.includes(busca);
     });
 
@@ -780,17 +894,20 @@
     }
 
     body.innerHTML = linhas
-      .map(
-        (m) => `
+      .map((m) => {
+        const ehEmprestimo = (m.motivo || "").startsWith("Empréstimo");
+        return `
       <tr>
         <td>${fmtDataHora(m.data)}</td>
-        <td><span class="badge ${m.tipo}">${m.tipo === "entrada" ? "Entrada" : "Saída"}</span></td>
+        <td><span class="badge ${m.tipo}">${m.tipo === "entrada" ? "Entrada" : "Saída"}</span>${
+          ehEmprestimo ? '<span class="badge emprestimo">🔁 Empréstimo</span>' : ""
+        }</td>
         <td>${escapeHtml(m.produtos?.nome || "—")} <span class="muted small">(${m.produtos?.sku || "—"})</span></td>
         <td>${m.quantidade}</td>
         <td>${escapeHtml(m.condominio || "—")}</td>
         <td>${escapeHtml(m.motivo || "—")}</td>
-      </tr>`
-      )
+      </tr>`;
+      })
       .join("");
   }
 
@@ -859,6 +976,8 @@
     preencherCondominios();
     wireFormProduto();
     wireModalEdicao();
+    wireModalEmprestimo();
+    wireImprimirLista();
     wireFotoModal();
     wireFormEntrada();
     wireFormSaida();
