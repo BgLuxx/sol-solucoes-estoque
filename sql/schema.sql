@@ -103,3 +103,89 @@ end;
 $$ language plpgsql security definer;
 
 grant execute on function registrar_movimentacao(uuid, text, integer, text, text) to anon;
+
+-- Empréstimo entre depósitos: desconta a quantidade do produto no depósito
+-- de origem (pode deixar NEGATIVO de propósito — isso representa "devo X
+-- unidades desse produto") e soma essa quantidade no mesmo produto (por
+-- nome) no depósito de destino, criando o produto lá se ele ainda não
+-- existir. Registra os dois lados no histórico de movimentações, pra ficar
+-- rastreável. Depois, quando o produto for reposto normalmente (Entrada),
+-- a soma simples já resolve sozinha a "dívida" (ex.: -1 + 3 = 2).
+create or replace function emprestar_produto(
+  p_produto_id uuid,
+  p_deposito_destino text,
+  p_quantidade integer
+) returns void as $$
+declare
+  v_nome text;
+  v_foto text;
+  v_deposito_origem text;
+  v_destino_id uuid;
+  v_base text;
+  v_sufixo text;
+  v_tentativas integer := 0;
+begin
+  if p_quantidade is null or p_quantidade <= 0 then
+    raise exception 'Quantidade inválida';
+  end if;
+
+  select nome, foto, deposito into v_nome, v_foto, v_deposito_origem
+  from produtos
+  where id = p_produto_id
+  for update;
+
+  if not found then
+    raise exception 'Produto não encontrado';
+  end if;
+
+  if p_deposito_destino is null or trim(p_deposito_destino) = '' then
+    raise exception 'Escolha um depósito de destino';
+  end if;
+
+  if p_deposito_destino = v_deposito_origem then
+    raise exception 'O depósito de destino precisa ser diferente do atual';
+  end if;
+
+  -- desconta no depósito de origem (pode ficar negativo — é o empréstimo)
+  update produtos set quantidade = quantidade - p_quantidade where id = p_produto_id;
+
+  -- procura o mesmo produto (por nome) já cadastrado no depósito de destino
+  select id into v_destino_id
+  from produtos
+  where deposito = p_deposito_destino
+    and lower(trim(nome)) = lower(trim(v_nome))
+  for update
+  limit 1;
+
+  if v_destino_id is not null then
+    update produtos set quantidade = quantidade + p_quantidade where id = v_destino_id;
+  else
+    v_base := upper(substring(regexp_replace(v_nome, '[^A-Za-z]', '', 'g') from 1 for 3));
+    if v_base is null or v_base = '' then
+      v_base := 'EMP';
+    end if;
+    loop
+      v_sufixo := lpad(floor(random() * 900 + 100)::text, 3, '0');
+      begin
+        insert into produtos (sku, nome, quantidade, foto, deposito, valor_unitario)
+        values (v_base || '-' || v_sufixo, v_nome, p_quantidade, v_foto, p_deposito_destino, 0)
+        returning id into v_destino_id;
+        exit;
+      exception when unique_violation then
+        v_tentativas := v_tentativas + 1;
+        if v_tentativas > 6 then
+          raise exception 'Não foi possível gerar um SKU único pro produto no depósito de destino.';
+        end if;
+      end;
+    end loop;
+  end if;
+
+  insert into movimentacoes (produto_id, tipo, quantidade, condominio, motivo)
+  values (p_produto_id, 'saida', p_quantidade, null, 'Empréstimo enviado para ' || p_deposito_destino);
+
+  insert into movimentacoes (produto_id, tipo, quantidade, condominio, motivo)
+  values (v_destino_id, 'entrada', p_quantidade, null, 'Empréstimo recebido de ' || v_deposito_origem);
+end;
+$$ language plpgsql security definer;
+
+grant execute on function emprestar_produto(uuid, text, integer) to anon;
